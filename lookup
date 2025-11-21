@@ -1,0 +1,53 @@
+import pandas as pd
+import os
+
+# === INPUT FILES ===
+base_dir = r"C:\Users\ivc21324adm\OneDrive - InfoVision, Inc\DataMigrationSourceFiles\E_Commerce\Case Extension"
+main_file = os.path.join(base_dir, "CaseExtension_MyArrow_V4_200964.csv")
+user_lkp_file = os.path.join(base_dir, "E_commerce_MergeUAT_User_Lkp_File.csv")
+case_lkp_file = os.path.join(base_dir, "E_Commerce_MergeUAT_Case_Lkp_File.csv")
+queue_lkp_file = os.path.join(base_dir, "Queue_DigitalProd_MergeUAT.csv")
+
+# === READ FILES ===
+df_main = pd.read_csv(main_file, encoding='utf-8', dtype=str)
+df_user_lkp = pd.read_csv(user_lkp_file, encoding='utf-8', dtype=str)
+df_case_lkp = pd.read_csv(case_lkp_file, encoding='utf-8', dtype=str)
+df_queue_lkp = pd.read_csv(queue_lkp_file, encoding='utf-8', dtype=str)
+
+# === STRIP WHITESPACE FROM ALL COLUMNS ===
+for df in [df_main, df_user_lkp, df_case_lkp, df_queue_lkp]:
+    df[:] = df.apply(lambda x: x.str.strip() if x.dtype == "object" else x)
+
+# === RENAME 'Id' TO 'Legacy_SF_Record_ID__c' IN MAIN FILE ===
+df_main.rename(columns={'Id': 'Legacy_SF_Record_ID__c'}, inplace=True)
+
+# === USER LOOKUP: MAP USER FIELDS ===
+user_lkp_dict = dict(zip(df_user_lkp['Legacy_SF_Record_ID__c'], df_user_lkp['Id']))
+user_fields = ['OwnerId', 'CreatedById', 'LastModifiedById', 'Original_Owner__c', 'Previous_Owner__c']
+for col in user_fields:
+    if col in df_main.columns:
+        df_main[col] = df_main[col].map(user_lkp_dict).fillna('')
+
+# === CASE LOOKUP: MAP Legacy_SF_Record_ID__c TO Case__c ===
+if 'Legacy_SF_Record_ID__c' in df_case_lkp.columns and 'Id' in df_case_lkp.columns:
+    case_lkp_dict = dict(zip(df_case_lkp['Legacy_SF_Record_ID__c'], df_case_lkp['Id']))
+    df_main['Case__c'] = df_main['Legacy_SF_Record_ID__c'].map(case_lkp_dict).fillna('')
+else:
+    df_main['Case__c'] = ''
+
+# === QUEUE LOOKUP: MAP QUEUE FIELDS ===
+if 'Legacy_SF_Record_ID__c' in df_queue_lkp.columns and 'Id' in df_queue_lkp.columns:
+    queue_lkp_dict = dict(zip(df_queue_lkp['Legacy_SF_Record_ID__c'], df_queue_lkp['Id']))
+    queue_fields = ['Previous_Queue__c', 'ReportingQueue__c']
+    for col in queue_fields:
+        if col in df_main.columns:
+            df_main[col] = df_main[col].map(queue_lkp_dict).fillna('')
+
+# === WRITE OUTPUT FILE ===
+output_file = os.path.join(base_dir, "CaseExtension_MyArrow_V4_200964_dataCleaned.csv")
+df_main.to_csv(output_file, index=False, encoding='utf-8')
+
+# === PRINT SUMMARY ===
+file_size_mb = os.path.getsize(output_file) / (1024 * 1024)
+print(f"✅ Output file created: {os.path.basename(output_file)}")
+print(f"📏 File size: {file_size_mb:.2f} MB")
